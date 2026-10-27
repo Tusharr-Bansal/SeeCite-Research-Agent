@@ -3,9 +3,9 @@
 # The app creates the schema itself and loads this file on first start against an empty database.
 # Usage: deploy/export_demo.sh   (reads DATABASE_URL, default: local dev database)
 set -euo pipefail
-SRC="${DATABASE_URL:-postgresql://pcg:pcg@localhost:5432/citewise}"
+SRC="${DATABASE_URL:-postgresql://pcg:pcg@localhost:5432/seecite}"
 OUT="$(cd "$(dirname "$0")" && pwd)/demo_data.sql.gz"
-TMPDB="citewise_export_$$"
+TMPDB="seecite_export_$$"
 ADMIN="${SRC%/*}/postgres"
 
 psql "$ADMIN" -qc "CREATE DATABASE $TMPDB" >/dev/null

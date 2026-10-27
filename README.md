@@ -1,8 +1,8 @@
-# Citewise
+# SeeCite
 
 **Ask your research papers questions and get answers that cite the exact passage.**
 
-Create a project, upload the PDFs from your literature review (any field), and ask questions. Citewise searches the papers with hybrid retrieval (BM25 + vector search in Postgres/pgvector) and answers with numbered citations that are validated in code. By default it runs one search per question (fast, one LLM call). **Deep search** is an option: an agent plans several searches, checks whether the evidence is enough, and searches again if not (including inside one specific paper). A built-in demo project holds the 29 open-access papers from my MySteth literature review on pediatric heart-sound screening.
+Create a project, upload the PDFs from your literature review (any field), and ask questions. SeeCite searches the papers with hybrid retrieval (BM25 + vector search in Postgres/pgvector) and answers with numbered citations that are validated in code. By default it runs one search per question (fast, one LLM call). **Deep search** is an option: an agent plans several searches, checks whether the evidence is enough, and searches again if not (including inside one specific paper). A built-in demo project holds the 29 open-access papers from my MySteth literature review on pediatric heart-sound screening.
 
 **Live demo:** https://citewise-3i23.onrender.com
 
@@ -53,7 +53,7 @@ Every design choice, with the alternatives rejected and the evidence measured, i
 ## Repository layout
 
 ```
-src/citewise/      the application
+src/seecite/       the application
   pdf_extract.py     PDF → clean page text
   chunking.py        sentence-aligned, token-counted chunks
   embeddings.py      local bge-small embeddings, cached
@@ -77,10 +77,10 @@ Needs Python 3.12+, Postgres 16 with the pgvector extension, and `pdftotext` (po
 ```bash
 pip install -r requirements.txt
 cp .env.example .env            # add your GEMINI_API_KEY (never commit .env)
-# set DATABASE_URL in .env if not postgresql://pcg:pcg@localhost:5432/citewise
+# set DATABASE_URL in .env if not postgresql://pcg:pcg@localhost:5432/seecite
 psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
 python -c "from huggingface_hub import snapshot_download; snapshot_download('Qdrant/bge-small-en-v1.5-onnx-Q', local_dir='models/bge-small-en-v1.5-onnx-Q', allow_patterns=['*.json','*.onnx','vocab.txt'])"
-PYTHONPATH=src uvicorn citewise.app:app --port 7860     # open http://localhost:7860
+PYTHONPATH=src uvicorn seecite.app:app --port 7860     # open http://localhost:7860
 PYTHONPATH=src python -m pytest -q tests
 ```
 

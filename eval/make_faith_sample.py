@@ -19,8 +19,8 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / "src"))
-from citewise import db  # noqa: E402
-from citewise.ingest import DEMO_PROJECT_ID  # noqa: E402
+from seecite import db  # noqa: E402
+from seecite.ingest import DEMO_PROJECT_ID  # noqa: E402
 
 PER_SYSTEM = 30
 SEED = 17

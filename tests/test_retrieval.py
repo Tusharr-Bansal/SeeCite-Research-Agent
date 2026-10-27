@@ -1,6 +1,6 @@
 from collections import Counter
 
-from citewise.retrieval import BM25Index, _parse_tsvector, rrf
+from seecite.retrieval import BM25Index, _parse_tsvector, rrf
 
 
 def test_parse_tsvector_counts_positions():

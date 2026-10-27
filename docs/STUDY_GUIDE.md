@@ -4,7 +4,7 @@ How to learn this project well enough to defend every part of it in an interview
 
 ## 0. The one-minute pitch (memorise this)
 
-> I built and deployed Citewise, a research assistant where you create a project, upload the papers from your literature review, and ask questions. Every claim in the answer cites the exact passage it came from, and the citations are checked in code. Retrieval is hybrid (BM25 plus vector search in Postgres with pgvector), which beat vector-only search by 14 points. I evaluated it on my own literature review on pediatric heart-sound screening, with a test set I verified myself. In a blind review of 60 answers, none contained invented facts and 83% were fully faithful. The evaluation also earned its keep: it caught a regression, which I traced and fixed (+17 points), and it showed that a single search matched a multi-step agent at a third of the cost, so single search became the default. And it showed that test questions written by an LLM make retrieval look 40 points better than natural questions do.
+> I built and deployed SeeCite, a research assistant where you create a project, upload the papers from your literature review, and ask questions. Every claim in the answer cites the exact passage it came from, and the citations are checked in code. Retrieval is hybrid (BM25 plus vector search in Postgres with pgvector), which beat vector-only search by 14 points. I evaluated it on my own literature review on pediatric heart-sound screening, with a test set I verified myself. In a blind review of 60 answers, none contained invented facts and 83% were fully faithful. The evaluation also earned its keep: it caught a regression, which I traced and fixed (+17 points), and it showed that a single search matched a multi-step agent at a third of the cost, so single search became the default. And it showed that test questions written by an LLM make retrieval look 40 points better than natural questions do.
 
 ## 1. The big picture (30 min)
 
@@ -30,16 +30,16 @@ You should be able to explain: what RAG is, why it's used instead of fine-tuning
 
 | Read | Then explain |
 |---|---|
-| `src/citewise/pdf_extract.py` + decision 0007 | Why pdftotext; ligatures (`ﬁ`) breaking keyword search; how headers and reference lists are removed; the Guo "Supplementary" bug and its fix |
-| `src/citewise/chunking.py` + decision 0008 | Why sizes are counted in model tokens (silent truncation at 512); sentence packing; overlap; why gold labels use quotes instead of chunk IDs |
-| `src/citewise/embeddings.py` + decision 0003 | What an embedding is; cosine similarity; the bge query prefix (and its measured +9 points); the embedding cache |
-| `src/citewise/schema.sql`, `ingest.py` + decision 0004 | The `chunks` table; `vector(384)`; the generated `tsvector` column; HNSW vs IVFFlat |
+| `src/seecite/pdf_extract.py` + decision 0007 | Why pdftotext; ligatures (`ﬁ`) breaking keyword search; how headers and reference lists are removed; the Guo "Supplementary" bug and its fix |
+| `src/seecite/chunking.py` + decision 0008 | Why sizes are counted in model tokens (silent truncation at 512); sentence packing; overlap; why gold labels use quotes instead of chunk IDs |
+| `src/seecite/embeddings.py` + decision 0003 | What an embedding is; cosine similarity; the bge query prefix (and its measured +9 points); the embedding cache |
+| `src/seecite/schema.sql`, `ingest.py` + decision 0004 | The `chunks` table; `vector(384)`; the generated `tsvector` column; HNSW vs IVFFlat |
 
-Exercise: run `python -m citewise.ingest demo` and read its output line by line; then upload a paper in the local app and watch it go queued → processing → ready.
+Exercise: run `python -m seecite.ingest demo` and read its output line by line; then upload a paper in the local app and watch it go queued → processing → ready.
 
 ## 3. Retrieval: finding the right passage (60 min)
 
-Read `src/citewise/retrieval.py` and decision 0011, which is the most important one.
+Read `src/seecite/retrieval.py` and decision 0011, which is the most important one.
 
 You should be able to explain:
 - **BM25:** term frequency, inverse document frequency, length normalisation, and why it beat Postgres's `ts_rank_cd` by 27 points (IDF).
@@ -50,7 +50,7 @@ You should be able to explain:
 
 ## 4. The agent (45 min)
 
-Read `src/citewise/agent.py` top to bottom (it's short) and decisions 0012 and 0019.
+Read `src/seecite/agent.py` top to bottom (it's short) and decisions 0012 and 0019.
 
 You should be able to explain:
 - **Why single search is the default and the agent is opt-in ("Deep search"; 0019):** equal correctness on this corpus at a third of the LLM calls, so the free daily quota serves about three times as many questions; the budget counts LLM calls (fast = 1, deep = 3), not questions.
@@ -78,7 +78,7 @@ You should be able to explain:
 
 ## 6. Production concerns (30 min)
 
-Read `src/citewise/llm.py`, `src/citewise/app.py`, `Dockerfile`, `render.yaml`, and decisions 0013, 0014 and 0015 (with their addenda: quota, `pdftotext`, memory, progress bar, 7-day expiry).
+Read `src/seecite/llm.py`, `src/seecite/app.py`, `Dockerfile`, `render.yaml`, and decisions 0013, 0014 and 0015 (with their addenda: quota, `pdftotext`, memory, progress bar, 7-day expiry).
 
 You should be able to explain:
 - Retries with exponential backoff and jitter; why 503/429 are retried and 400 isn't.

@@ -17,9 +17,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from citewise.agent import AgentResult, ResearchAgent  # noqa: E402
-from citewise.ingest import DEMO_PROJECT_ID  # noqa: E402
-from citewise.llm import LLM, DailyQuotaExhausted  # noqa: E402
+from seecite.agent import AgentResult, ResearchAgent  # noqa: E402
+from seecite.ingest import DEMO_PROJECT_ID  # noqa: E402
+from seecite.llm import LLM, DailyQuotaExhausted  # noqa: E402
 
 HERE = Path(__file__).parent
 JUDGE_MODEL = "gemma-4-26b-a4b-it"  # 3.6-flash free tier = 20 requests/day; see docs/decisions/0014

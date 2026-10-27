@@ -2,7 +2,7 @@
 
 Two entry points:
 - `ingest_paper(...)`: one PDF into one project. Used by the web app's upload worker.
-- `python -m citewise.ingest demo`: (re)build the built-in demo project from
+- `python -m seecite.ingest demo`: (re)build the built-in demo project from
   papers/manifest.json, keeping its paper and chunk ids stable so the evaluation
   gold set (which refers to chunk ids) stays valid.
 """
@@ -173,5 +173,5 @@ def build_demo() -> None:
 
 if __name__ == "__main__":
     if sys.argv[1:] != ["demo"]:
-        sys.exit("usage: python -m citewise.ingest demo")
+        sys.exit("usage: python -m seecite.ingest demo")
     build_demo()

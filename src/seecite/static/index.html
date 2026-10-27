@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Citewise</title>
+<title>SeeCite</title>
 <meta name="description" content="Upload your research papers, ask questions, and get answers that cite the exact passage.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -167,7 +167,7 @@ footer { color: var(--muted); font-size: 13px; }
 <body>
 <header class="bar gutter">
   <div class="wide inner">
-    <a class="logo" href="./" id="home-link"><span class="mark">[S1]</span><span class="word">Citewise</span></a>
+    <a class="logo" href="./" id="home-link"><span class="mark">[S1]</span><span class="word">SeeCite</span></a>
     <span class="hint" id="top-hint">Answers that cite their sources</span>
   </div>
 </header>
@@ -177,7 +177,7 @@ footer { color: var(--muted); font-size: 13px; }
     <div>
       <p class="eyebrow">For literature reviews</p>
       <h1>Ask your papers. Check every answer.</h1>
-      <p class="lede">Upload the papers behind your research, ask questions in plain language, and get answers where every claim cites the exact passage it came from. When your papers don't contain the answer, Citewise says so.</p>
+      <p class="lede">Upload the papers behind your research, ask questions in plain language, and get answers where every claim cites the exact passage it came from. When your papers don't contain the answer, SeeCite says so.</p>
       <div class="cta">
         <button class="primary" type="button" id="hero-start">Start a project</button>
         <button class="secondary" type="button" id="hero-demo">Explore the demo</button>
@@ -287,7 +287,7 @@ footer { color: var(--muted); font-size: 13px; }
     <div><a href="./">Back to the start page</a></div>
   </main>
 
-  <footer>Citewise: hybrid BM25 + vector search in Postgres (pgvector), an agent that plans, checks and re-searches, and answers restricted to your papers. By Tushar Bansal.<br>
+  <footer>SeeCite: hybrid BM25 + vector search in Postgres (pgvector), an agent that plans, checks and re-searches, and answers restricted to your papers. By Tushar Bansal.<br>
     Photos on Unsplash by <a href="https://unsplash.com/photos/three-people-in-lab-coats-looking-at-a-tablet-6NMcUDG37Yc">National Cancer Institute</a>,
     <a href="https://unsplash.com/photos/scientist-using-laptop-in-laboratory-8yS04veb1TQ">ThisisEngineering</a> and
     <a href="https://unsplash.com/photos/woman-looking-on-microscope-inside-room-6q5QG8iIgRo">Trust "Tru" Katsande</a>.</footer>
@@ -313,8 +313,9 @@ footer { color: var(--muted); font-size: 13px; }
 
   // ---------- your projects (this browser only) ----------
   const store = {
-    get() { try { return JSON.parse(localStorage.getItem("citewise.projects") || "[]"); } catch { return []; } },
-    set(v) { try { localStorage.setItem("citewise.projects", JSON.stringify(v.slice(0, 30))); } catch { /* storage unavailable */ } },
+    // "citewise.projects" is the key from before the rename; read it once so visitors keep their list.
+    get() { try { return JSON.parse(localStorage.getItem("seecite.projects") || localStorage.getItem("citewise.projects") || "[]"); } catch { return []; } },
+    set(v) { try { localStorage.setItem("seecite.projects", JSON.stringify(v.slice(0, 30))); } catch { /* storage unavailable */ } },
     remember(p) { const v = store.get().filter((x) => x.id !== p.id); v.unshift({ id: p.id, name: p.name }); store.set(v); },
     forget(id) { store.set(store.get().filter((x) => x.id !== id)); },
   };
@@ -346,7 +347,7 @@ footer { color: var(--muted); font-size: 13px; }
   function route() {
     clearTimeout(pollTimer);
     const pid = new URLSearchParams(location.search).get("p");
-    if (!pid) { renderHome(); show("home"); document.title = "Citewise"; return; }
+    if (!pid) { renderHome(); show("home"); document.title = "SeeCite"; return; }
     openProject(pid);
   }
 
@@ -394,7 +395,7 @@ footer { color: var(--muted); font-size: 13px; }
     }
     current = p;
     if (!p.is_demo) store.remember(p);
-    document.title = `${p.name} · Citewise`;
+    document.title = `${p.name} · SeeCite`;
     $("p-name").textContent = p.name;
     $("p-desc").textContent = p.description || "";
     $("p-desc").hidden = !p.description;

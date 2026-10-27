@@ -1,5 +1,5 @@
-from citewise.agent import anchored, extract_citations, interleave
-from citewise.retrieval import Hit
+from seecite.agent import anchored, extract_citations, interleave
+from seecite.retrieval import Hit
 
 
 def test_extract_citations_handles_grouped_and_repeated():

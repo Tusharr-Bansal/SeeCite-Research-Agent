@@ -1,6 +1,6 @@
-"""Citewise web app: projects, PDF uploads, and cited answers (docs/decisions/0013, 0014).
+"""SeeCite web app: projects, PDF uploads, and cited answers (docs/decisions/0013, 0014).
 
-Run locally:  uvicorn citewise.app:app --port 7860
+Run locally:  uvicorn seecite.app:app --port 7860
 """
 
 from __future__ import annotations
@@ -29,27 +29,27 @@ from .ingest import DEMO_PROJECT_ID, IngestError, ingest_paper, new_paper_id
 from .llm import LLM, DailyQuotaExhausted
 
 STATIC = Path(__file__).with_name("static")
-DEMO_DUMP = Path(os.environ.get("CITEWISE_DEMO_DUMP", Path(__file__).resolve().parents[2] / "deploy" / "demo_data.sql.gz"))
-UPLOAD_DIR = Path(os.environ.get("CITEWISE_UPLOAD_DIR", tempfile.gettempdir())) / "citewise_uploads"
+DEMO_DUMP = Path(os.environ.get("SEECITE_DEMO_DUMP", Path(__file__).resolve().parents[2] / "deploy" / "demo_data.sql.gz"))
+UPLOAD_DIR = Path(os.environ.get("SEECITE_UPLOAD_DIR", tempfile.gettempdir())) / "seecite_uploads"
 
 MAX_QUESTION_CHARS = 500
 MAX_PDF_MB = 25
 MAX_PAPERS_PER_PROJECT = 40
-MAX_PROJECTS = int(os.environ.get("CITEWISE_MAX_PROJECTS", "300"))
-PROJECT_TTL_DAYS = int(os.environ.get("CITEWISE_PROJECT_TTL_DAYS", "7"))  # uploaded projects only; the demo is kept
+MAX_PROJECTS = int(os.environ.get("SEECITE_MAX_PROJECTS", "300"))
+PROJECT_TTL_DAYS = int(os.environ.get("SEECITE_PROJECT_TTL_DAYS", "7"))  # uploaded projects only; the demo is kept
 CLEANUP_EVERY_S = 3600
-PER_IP_PER_MINUTE = int(os.environ.get("CITEWISE_PER_IP_PER_MINUTE", "5"))
-PER_IP_PER_DAY = int(os.environ.get("CITEWISE_PER_IP_PER_DAY", "30"))
+PER_IP_PER_MINUTE = int(os.environ.get("SEECITE_PER_IP_PER_MINUTE", "5"))
+PER_IP_PER_DAY = int(os.environ.get("SEECITE_PER_IP_PER_DAY", "30"))
 # The answer model's free tier allows 500 requests/day. The budget is counted in LLM calls: a fast question
 # (single search) costs 1, a deep one (agent) is charged 3 (its median; up to 6). 400 leaves ~100 for upload
 # metadata and evaluation runs. See docs/decisions/0015 and 0019.
-GLOBAL_CALLS_PER_DAY = int(os.environ.get("CITEWISE_GLOBAL_CALLS_PER_DAY", "400"))
+GLOBAL_CALLS_PER_DAY = int(os.environ.get("SEECITE_GLOBAL_CALLS_PER_DAY", "400"))
 CALLS_CHARGED = {"fast": 1, "deep": 3}
 PROJECTS_PER_IP_PER_DAY = 10
 UPLOADS_PER_IP_PER_DAY = 120
 _PROJECT_ID = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
 
-app = FastAPI(title="Citewise", docs_url=None, redoc_url=None)
+app = FastAPI(title="SeeCite", docs_url=None, redoc_url=None)
 
 
 class HideInternalHealthChecks(logging.Filter):

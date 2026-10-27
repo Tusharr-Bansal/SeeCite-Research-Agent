@@ -1,7 +1,7 @@
 """A connection dropped by the server (Neon's idle suspend) is replaced instead of failing every question."""
 import psycopg
 
-import citewise.retrieval as retrieval
+import seecite.retrieval as retrieval
 
 
 class FakeConn:

@@ -1,7 +1,7 @@
 """Write the demo page's "How well does it work?" panel from the evaluation results.
 
 Every number is read from eval/results/*.json, nothing is typed by hand, so the panel can't
-drift from the measurements. Output: src/citewise/static/eval_summary.json ({"html": ...}),
+drift from the measurements. Output: src/seecite/static/eval_summary.json ({"html": ...}),
 served by GET /api/eval and shown on the demo project only.
 
 Run:  python eval/publish_summary.py
@@ -13,7 +13,7 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 RES = HERE / "results"
-OUT = HERE.parent / "src" / "citewise" / "static" / "eval_summary.json"
+OUT = HERE.parent / "src" / "seecite" / "static" / "eval_summary.json"
 REPO = "https://github.com/Tusharr-Bansal/Citewise-Research-Agent/blob/main"
 
 

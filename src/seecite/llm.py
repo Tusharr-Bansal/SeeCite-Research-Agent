@@ -28,10 +28,10 @@ from google.genai import errors, types
 
 from . import config
 
-MODEL = os.environ.get("CITEWISE_LLM_MODEL", "gemini-3.5-flash-lite")
+MODEL = os.environ.get("SEECITE_LLM_MODEL", "gemini-3.5-flash-lite")
 CACHE_DB = config.REPO_ROOT / ".cache" / "llm_cache.sqlite"
 CALL_LOG = config.REPO_ROOT / ".cache" / "llm_calls.jsonl"
-MIN_INTERVAL_S = float(os.environ.get("CITEWISE_LLM_MIN_INTERVAL_S", "4.0"))  # ~15 requests/min
+MIN_INTERVAL_S = float(os.environ.get("SEECITE_LLM_MIN_INTERVAL_S", "4.0"))  # ~15 requests/min
 MAX_ATTEMPTS = 6
 RETRYABLE = {429, 500, 502, 503, 504}
 

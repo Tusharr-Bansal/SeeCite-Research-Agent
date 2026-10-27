@@ -1,5 +1,5 @@
 """Expired-project cleanup runs at most once per interval and never breaks a request."""
-import citewise.app as app
+import seecite.app as app
 
 
 class FakeConn:

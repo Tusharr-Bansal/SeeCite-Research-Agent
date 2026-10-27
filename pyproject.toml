@@ -1,5 +1,5 @@
 [project]
-name = "citewise"
+name = "seecite"
 version = "0.1.0"
 description = "Upload a research literature collection and get answers that cite the exact passage"
 requires-python = ">=3.11"
@@ -26,4 +26,4 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-citewise = ["schema.sql"]
+seecite = ["schema.sql"]

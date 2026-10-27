@@ -22,7 +22,7 @@ HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / "src"))
 sys.path.insert(0, str(HERE))
 from build_gold import quote_in_chunk  # noqa: E402
-from citewise.llm import LLM  # noqa: E402
+from seecite.llm import LLM  # noqa: E402
 from eval_agent import JUDGE_MODEL, JUDGE_SYSTEM  # noqa: E402
 from judge_agreement import BINARY, CLASSES, kappa  # noqa: E402
 

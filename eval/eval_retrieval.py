@@ -16,8 +16,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from citewise.ingest import DEMO_PROJECT_ID  # noqa: E402
-from citewise.retrieval import Retriever  # noqa: E402
+from seecite.ingest import DEMO_PROJECT_ID  # noqa: E402
+from seecite.retrieval import Retriever  # noqa: E402
 
 HERE = Path(__file__).parent
 KS = (1, 5, 10)

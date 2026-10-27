@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def _load_dotenv() -> None:
     """Load KEY=VALUE lines from .env into the environment (without overriding)."""
-    env_file = Path(os.environ.get("CITEWISE_ENV_FILE", REPO_ROOT / ".env"))
+    env_file = Path(os.environ.get("SEECITE_ENV_FILE", REPO_ROOT / ".env"))
     if not env_file.exists():
         return
     for line in env_file.read_text().splitlines():
@@ -24,18 +24,18 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 # --- Storage -----------------------------------------------------------------
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://pcg:pcg@localhost:5432/citewise")
-PAPERS_DIR = Path(os.environ.get("CITEWISE_PAPERS_DIR", REPO_ROOT / "papers"))
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://pcg:pcg@localhost:5432/seecite")
+PAPERS_DIR = Path(os.environ.get("SEECITE_PAPERS_DIR", REPO_ROOT / "papers"))
 MANIFEST_PATH = PAPERS_DIR / "manifest.json"
 
 # --- Embeddings (see docs/decisions/0003) -----------------------------------
 EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 EMBED_MODEL_PATH = Path(
-    os.environ.get("CITEWISE_EMBED_MODEL_PATH", REPO_ROOT / "models" / "bge-small-en-v1.5-onnx-Q")
+    os.environ.get("SEECITE_EMBED_MODEL_PATH", REPO_ROOT / "models" / "bge-small-en-v1.5-onnx-Q")
 )
 EMBED_DIM = 384
 EMBED_MAX_TOKENS = 512  # the model truncates anything longer, silently
-EMBED_THREADS = int(os.environ["CITEWISE_EMBED_THREADS"]) if os.environ.get("CITEWISE_EMBED_THREADS") else None
+EMBED_THREADS = int(os.environ["SEECITE_EMBED_THREADS"]) if os.environ.get("SEECITE_EMBED_THREADS") else None
 
 # --- Chunking (see docs/decisions/0008) -------------------------------------
 CHUNK_MAX_TOKENS = 350

@@ -1,5 +1,5 @@
-from citewise.chunking import chunk_paper, sentences
-from citewise.pdf_extract import Page, clean_pages
+from seecite.chunking import chunk_paper, sentences
+from seecite.pdf_extract import Page, clean_pages
 
 
 def words(text: str) -> int:
@@ -56,7 +56,7 @@ def test_supplementary_header_inside_reference_list_does_not_resume():
 
 
 def test_numbered_reference_headings_are_detected():
-    from citewise.pdf_extract import _REFS_HEADING
+    from seecite.pdf_extract import _REFS_HEADING
 
     for heading in ["References", "R EFERENCES", "7. REFERENCES", "VII. REFERENCES", "Bibliography"]:
         assert _REFS_HEADING.match(heading), heading

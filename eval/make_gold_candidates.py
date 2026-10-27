@@ -17,10 +17,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from citewise import db  # noqa: E402
-from citewise.ingest import DEMO_PROJECT_ID  # noqa: E402
-from citewise.chunking import numeric_fraction  # noqa: E402
-from citewise.llm import LLM  # noqa: E402
+from seecite import db  # noqa: E402
+from seecite.ingest import DEMO_PROJECT_ID  # noqa: E402
+from seecite.chunking import numeric_fraction  # noqa: E402
+from seecite.llm import LLM  # noqa: E402
 
 OUT = Path(__file__).with_name("gold_candidates.json")
 PER_PAPER = 2

@@ -23,8 +23,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from citewise import db  # noqa: E402
-from citewise.ingest import DEMO_PROJECT_ID  # noqa: E402
+from seecite import db  # noqa: E402
+from seecite.ingest import DEMO_PROJECT_ID  # noqa: E402
 
 HERE = Path(__file__).parent
 FUZZY_MIN_COVERAGE = 0.85  # share of the quote's characters found, in order, in the chunk

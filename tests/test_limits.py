@@ -2,7 +2,7 @@
 import pytest
 from fastapi import HTTPException
 
-from citewise.app import CALLS_CHARGED, RateLimiter
+from seecite.app import CALLS_CHARGED, RateLimiter
 
 
 def test_deep_questions_cost_more_of_the_global_budget():

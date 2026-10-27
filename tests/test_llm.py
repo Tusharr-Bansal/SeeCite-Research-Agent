@@ -1,5 +1,5 @@
 """The retry policy must tell a per-minute rate limit (retry) from a per-day quota (give up now)."""
-from citewise.llm import is_daily_quota, server_retry_delay
+from seecite.llm import is_daily_quota, server_retry_delay
 
 
 class FakeAPIError(Exception):

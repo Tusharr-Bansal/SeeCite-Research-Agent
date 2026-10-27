@@ -1,4 +1,4 @@
--- Citewise schema. Idempotent: safe to run on every start; never drops user data.
+-- SeeCite schema. Idempotent: safe to run on every start; never drops user data.
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- A project is one literature collection (e.g. "MySteth 2.0").

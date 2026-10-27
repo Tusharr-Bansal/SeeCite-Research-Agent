@@ -1,7 +1,7 @@
 """Render's internal health checks are hidden from the access log; external keep-alive pings are not."""
 import logging
 
-from citewise.app import HideInternalHealthChecks
+from seecite.app import HideInternalHealthChecks
 
 
 def record(client: str, path: str) -> logging.LogRecord:
