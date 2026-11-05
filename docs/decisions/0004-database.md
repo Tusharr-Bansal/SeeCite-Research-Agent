@@ -1,40 +1,23 @@
-# 0004 — One Postgres database for vectors (pgvector) and keyword search
+# 0004 — One Postgres database for vector and keyword search
 
-**Date:** 2026-10-21 · **Status:** Accepted; keyword-ranking method still open
-
-## Context
-
-Hybrid search needs two indexes over the same chunks: a **vector index** (meaning-based search) and a **keyword index** (exact-term search). They can live in one database or two.
+**Date:** 2026-10-21 · **Status:** Accepted (keyword ranking settled in 0011)
 
 ## Decision
 
-A single **Postgres 16** database:
-- **pgvector** extension for the embeddings column and its index.
-- Postgres **built-in full-text search** (`tsvector` + GIN index) for keyword search.
+Hybrid search needs a vector index (meaning) and a keyword index (exact words) over the same chunks. I put both in one **Postgres 16** database:
+- **pgvector** for the embeddings.
+- Postgres **full-text search** (`tsvector` + GIN index) for keywords.
 
-Both searches run against the same `chunks` table, so the two result lists always refer to the same chunk IDs and can be merged in one query.
+Both run on the same `chunks` table, so their results use the same chunk IDs and are easy to merge.
 
-## Alternatives considered
+## Alternatives
 
-- **Dedicated vector DB (Qdrant, Chroma, Weaviate) + a separate keyword engine.** Two systems to deploy, keep in sync, and pay for. Overkill for a corpus of ~100 papers.
-- **FAISS in memory.** Fast, but no keyword search, no persistence story, and nothing to show about databases.
-- **Postgres is also already on the resume** (PostgreSQL, RDBMS, DBMS TA), and free hosted Postgres with pgvector is common, which simplifies deployment.
+- **A vector database (Qdrant, Chroma, Weaviate) plus a separate keyword engine:** two systems to deploy and keep in sync. Overkill for ~100 papers.
+- **FAISS in memory:** fast, but no keyword search and no persistence.
+- Postgres is already on my resume, and free hosted Postgres with pgvector is easy to find.
 
-## Open question (decided later, with measurements)
+## Open question at the time
 
-Postgres's built-in `ts_rank` is **not BM25**. It doesn't use inverse document frequency (how rare a term is across the corpus) the way BM25 does, so rare-but-important terms like "S3 gallop" aren't boosted as much. Options to compare once the gold set exists:
-1. `ts_rank_cd` as-is (simplest)
-2. True BM25 computed in Python (e.g., `rank_bm25`) over the same chunks
-3. A Postgres BM25 extension (e.g., ParadeDB `pg_search`), which depends on whether the deployment host allows it
+Postgres's built-in `ts_rank` isn't BM25: it doesn't boost rare words like "S3 gallop" the way BM25 does. I planned to compare `ts_rank_cd`, BM25 in Python, and a Postgres BM25 extension once the test set existed, and pick by recall@10. Result: BM25 in Python (0011).
 
-The choice will be made by recall@10, not by preference, and recorded in a new entry.
-
-## Consequences
-
-- Vector index type (HNSW vs. IVFFlat) barely matters at this corpus size (a few thousand chunks), where exact search is fast. The choice will still be made and explained.
-
-## Be ready to explain
-
-- What BM25 is (term frequency, inverse document frequency, length normalization) and why `ts_rank` differs.
-- HNSW vs. IVFFlat: graph-based vs. cluster-based approximate search; build time, memory, recall trade-offs.
-- Why hybrid search beats either method alone: vectors catch paraphrases, keywords catch exact rare terms.
+At this size (a few thousand chunks), the choice of vector index type barely matters.

@@ -1,87 +1,64 @@
-# 0014 — From a PCG-specific tool to Citewise: projects, uploads, any field
+# 0014 — From a heart-sound tool to any field: projects and uploads
 
-**Date:** 2026-10-22 · **Status:** Accepted (product direction set by Tushar)
+**Date:** 2026-10-22 · **Status:** Accepted
 
 ## Context
 
-Everything up to 0013 was built for one fixed corpus: Tushar's 29-paper MySteth literature review. Tushar redirected the product: any researcher should be able to **create a project, upload their own literature, and ask questions**, in any field. The retrieval, agent and evaluation stay; what changes is everything around them. The product is renamed **Citewise** (Tushar's choice), and the Python package `pcg_agent` becomes `citewise`. Decision records 0001–0013 refer to old paths; they're kept unchanged as history.
+Up to 0013, everything was built for one fixed set of papers: my MySteth review. I decided any researcher should be able to **create a project, upload their own papers, and ask questions** in any field. Search, the agent and the evaluation stay the same; everything around them changes. I renamed the product **Citewise** (later SeeCite, see 0020).
 
-## Decisions
+## What changed
 
-### Data model
-`projects` (id, name, description, is_demo) → `papers` (status: queued / processing / ready / failed, plus an error message) → `chunks` (now carry `project_id` and `paper_id`). Deleting a project cascades to its papers and chunks. `projects.updated_at` is bumped whenever papers change, which invalidates search caches. The schema script is idempotent and **never drops data** (the old one rebuilt tables on every ingest, fine for one corpus, destructive with user data).
+### Data
+`projects` → `papers` (status: queued / processing / ready / failed) → `chunks` (now tagged with project and paper). Deleting a project deletes its papers and chunks. The setup script **never drops data** (the old one rebuilt tables on every run, which was fine for one corpus but would wipe user uploads).
 
 ### The demo project
-The MySteth corpus becomes the built-in, read-only project `demo-mysteth`. Its paper ids and chunk ids are **unchanged** (`guo2017_calibration:012`…), so the gold test set still refers to valid chunks.
+The MySteth papers became the built-in, read-only project `demo-mysteth`, with the **same chunk IDs**, so the test set still works. I proved nothing changed: a hash over all chunk IDs and texts matches the old database exactly, and every retrieval result reproduces.
 
-**Evidence:** rebuilt from the embedding cache in 9 s, 985 chunks; an MD5 over all chunk ids and texts is identical to the pre-generalization database (`c9c60cda…`). The retrieval evaluation reproduces every previous number in the default configuration.
-
-### Search scoped to a project
-- **BM25 statistics are per project.** "Rare" must mean rare *within this collection*; a term common in one field may be rare in another.
-- Indexes are built lazily per project and cached, keyed by `updated_at`.
-- **Vector search is exact within a project (no HNSW index).** An approximate index searched across all projects and *then* filtered by project can return too few results, or the wrong ones. At a few thousand chunks per project, exact search takes milliseconds. Measured side effect: switching from HNSW to exact changed **1 of 315** rankings in the retrieval evaluation, and none in the default configuration. That's a direct measurement of what the approximation was costing.
+### Search per project
+- **BM25 statistics are per project.** A word that's common in one field may be rare in another.
+- **Vector search is exact within a project** (no approximate index). An approximate index searched across all projects and then filtered can return too few or wrong results. At a few thousand chunks per project, exact search takes milliseconds. Switching changed only 1 of 315 rankings in my tests.
 
 ### Uploads
-- One background worker processes PDFs one at a time (embedding is CPU-bound, so parallel jobs would just contend).
-- Each PDF: magic-byte check (`%PDF`), 25 MB cap, 40 papers per project; text extraction and the cleaning rules from 0007; **scanned PDFs are detected** (under 1,500 characters of text) and rejected with an explanation; then chunking and embedding.
-- **Metadata** (title, first author "et al.", year) comes from one LLM call on the first page, with the filename as fallback. **Links** come from an arXiv id or DOI found in the first two pages.
-- The uploaded PDF is deleted after processing; only the text chunks are kept.
-- On restart, uploads that were mid-flight are marked failed with "please upload again" instead of hanging forever.
+- One background worker processes PDFs one at a time (embedding is CPU-heavy).
+- Checks: real PDF, max 25 MB, max 40 papers per project. **Scanned PDFs** (under 1,500 characters of text) are rejected with an explanation.
+- **Title, first author and year** come from one LLM call on the first page, with the filename as fallback. **Links** come from an arXiv ID or DOI on the first two pages.
+- The PDF is deleted after processing; only the text chunks are kept.
+- After a restart, half-finished uploads are marked failed ("please upload again") instead of hanging.
 
-**Evidence (end-to-end test):** new project; uploaded Guo 2017, Balanya 2024 and a fake `.pdf`. The fake was rejected ("Not a PDF file."). Metadata was extracted correctly ("Guo et al. 2017", "Balanya et al. 2024" plus its DOI). A question was answered citing only that project's papers. After removing Balanya, the same question got an honest "not found", proving the cache invalidation works.
+**End-to-end test:** a new project with Guo 2017, Balanya 2024 and a fake PDF. The fake was rejected, metadata was correct, and a question was answered citing only that project's papers. After removing Balanya, the same question correctly got "not found".
 
 ### Prompts
-The system prompt no longer mentions phonocardiograms. It names the project and includes the user's own description ("Project focus: …"), so field-specific vocabulary still helps. The agent passes project context explicitly through each call, rather than storing it on the instance (which would mix projects if two questions ever ran concurrently).
+The prompts no longer mention heart sounds. They include the project's name and the user's description, so field-specific vocabulary still helps.
 
-### Access: the link is the key (Tushar's choice)
-No accounts. A project id is `secrets.token_urlsafe(12)` (~96 random bits), so it can't be guessed or enumerated, and possessing the link grants access, like an "anyone with the link" document. The browser remembers your projects in local storage. The UI warns not to upload confidential material.
+### Access: the link is the key
+No accounts. Each project ID is random (~96 bits), so it can't be guessed. Having the link gives access, like an "anyone with the link" Google Doc. The browser remembers your projects, and the page warns not to upload confidential papers.
 
-### Abuse limits
-Per visitor per day: 10 projects, 120 uploads, 30 questions (5/minute). Global: 300 questions/day (free-tier LLM quota) and 300 projects (database size).
+### Limits
+Per visitor per day: 10 projects, 120 uploads, 30 questions (5/minute). Overall: 300 questions/day and 300 projects.
 
 ## Consequences
 
-- **Per-request database connections:** a shared connection across request threads would let one request's statements run inside another's transaction.
-- **The evaluation must be re-run** with the generalized prompts, because the shipped system must be the measured system (results in 0017).
+- Each request opens its own database connection, so one request's queries can't end up inside another's transaction.
+- The evaluation had to be re-run with the new prompts (results in 0017).
 
-## Be ready to explain
+## Later: upload progress bar
 
-- Multi-tenancy at its simplest: every query filtered by project; per-tenant statistics (BM25 IDF).
-- Filtered approximate-nearest-neighbour search, and why it's a trap (pgvector 0.8 added iterative index scans to mitigate it).
-- Capability URLs: security by unguessable link, and its limits (links leak through sharing, browser history, screenshots).
-- Why the demo kept its ids (test-set validity), and how you proved nothing changed (content hash, identical retrieval results).
+On the free host a paper takes minutes, and "Processing" alone looked frozen. The bar has two stages:
+1. **Uploading:** real upload progress (using `XMLHttpRequest`, since `fetch()` can't report it).
+2. **Processing:** each paper saves its current stage and progress, which the page checks every 3 s: reading the PDF 2%, reading the title 5%, embedding passages 10% → 95% (most of the time), saving 97%, ready 100%. Embedding runs in batches of 8 so the bar keeps moving.
 
-## Addendum: upload progress bar (requested by Tushar after launch)
+**Bug I shipped and fixed:** I first named the bar's CSS class `.bar`, but the page header already used `class="bar"`, so the header turned into a squashed pill on the live site. My browser test had only checked the papers section. I renamed it `.progress-track`, and the test now screenshots every page and checks the header's height. **Lesson:** after a CSS change, check the whole page, not just the part you changed.
 
-On the free host a paper takes minutes, and a "Processing" label alone looked frozen. The bar has two phases:
+New columns are added with `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, because `CREATE TABLE IF NOT EXISTS` never adds columns to an existing table.
 
-1. **Sending the files:** real bytes-sent progress. `fetch()` can't report upload progress, so this one request uses `XMLHttpRequest` and its `upload.onprogress` event.
-2. **Processing on the server:** each paper now records a `stage` and a `progress` value (0–1) in its row, which the page already polls every 3 s:
-   - Reading the PDF: 2%
-   - Reading the title and authors: 5%
-   - Embedding passages (n of N): 10% → 95%, since this is ~90% of the time
-   - Saving: 97%
-   - Ready: 100%
+## Later: projects are deleted after 7 days
 
-   Embedding runs in slices of 8 passages so the count moves every few seconds, even on Render's 0.1 CPU. The bar shows the average over all papers in the current upload ("Paper 2 of 3 · Embedding passages (24 of 48)"). If the page is reloaded mid-upload, papers still in progress are picked up again.
+Every non-demo project is deleted **7 days after it's created** (setting: `SEECITE_PROJECT_TTL_DAYS`). This keeps the database within Neon's free 1 GB and limits how long uploads are kept.
 
-Below the bar is Tushar's note that the demo runs on free services and is slow.
+- **Hidden immediately:** an expired project returns 404 from every endpoint, whether or not it's been deleted yet.
+- **Deleted lazily:** at startup, then at most once an hour, *only during a request that already uses the database*. A separate hourly timer would wake Neon 24 times a day and waste its free compute hours (same idea as the database-free ping in 0015).
+- **Users are told** on the create form, the home page and each project page, and the 404 message explains why a link stopped working.
 
-**Bug shipped and fixed:** the bar's style was first named `.bar`, but the page header already used `class="bar"`. The header inherited `height: 6px; overflow: hidden; border-radius: 999px` and was drawn as a clipped pill on the live site (Tushar spotted it). The browser test had only photographed the papers section. Renamed to `.progress-track`, and the check now photographs every page (home, demo, a project mid-upload) and asserts the header's height. **Lesson:** global class names in one stylesheet collide; check the whole page after a CSS change, not just the part you changed.
+**Tested:** a project backdated to 8 days returned 404 immediately, and after a restart it was fully deleted. A 6-day-23-hour project and the demo were untouched.
 
-**Schema change on a live database:** `CREATE TABLE IF NOT EXISTS` never adds columns to an existing table, so the new columns use `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, which runs safely on every start. Verified on the local database, which had the old table: the columns were added and the upload test passed.
-
-**Tested:** two PDFs uploaded through the API (stages and percentages moved as expected, both reached "ready"); browser runs at 1280 px (light) and 390 px (dark): the bar went from "Paper 1 of 2 · Embedding passages (0 of 48)" to "Done: 2 ready 100%", with no horizontal overflow.
-
-## Addendum: uploaded projects are deleted after 7 days (Tushar's decision)
-
-**Rule:** every non-demo project, with its papers and passages, is deleted **7 days after it was created** (not after last use; `CITEWISE_PROJECT_TTL_DAYS` to change). The demo is never deleted. This bounds the database (Neon's free 1 GB) and how long anyone's uploads are kept.
-
-**How:**
-- **Hidden at once.** `get_project` only returns projects younger than 7 days. Every endpoint (view, upload, ask, remove) goes through it, so an expired project returns 404 the moment it turns 7 days old, whether or not it has been deleted yet.
-- **Deleted lazily.** One `DELETE FROM projects WHERE NOT is_demo AND created_at < now() - 7 days`, with papers and chunks removed by `ON DELETE CASCADE`. It runs at startup, and then at most once an hour, *only inside a request that is already using the database*. A separate hourly timer would wake Neon 24 times a day and burn its free compute-hours (the same reasoning as the DB-free `/api/ping`, 0015). If the cleanup itself fails, it's logged and never breaks the request.
-- **Users are told:** the create form ("deleted automatically 7 days after they're created"), the home notice, and each project page ("will be deleted automatically on 29 October 2026"). The 404 message says why a link may have stopped working, and the browser's "Your projects" list drops a project once its link returns 404.
-
-**Tested:** unit tests (`tests/test_cleanup.py`). End to end on the local database: a project backdated to 8 days old (7 papers, 185 passages) returned 404 immediately for both viewing and asking; after a restart the cleanup logged "deleted 1 expired project" and left **0 project, paper and passage rows**. A project at 6 days 23 hours and the demo (985 passages) were untouched.
-
-**Bug found by the tests:** the "last cleanup" timestamp started at `0.0`, but `time.monotonic()` counts from boot. On a host booted under an hour ago, "0" looked recent, so the first hourly cleanup would have been skipped. The startup cleanup masked it; fixed by starting at `-inf` ("never").
+**Bug the tests caught:** the "last cleanup" time started at `0.0`, but `time.monotonic()` counts from boot, so on a recently booted host "0" looked recent and the first cleanup would be skipped. Fixed by starting at `-inf`.

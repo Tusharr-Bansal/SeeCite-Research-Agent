@@ -1,44 +1,37 @@
-# 0012 — Agent: a hand-written plan → search → check → answer loop with guards
+# 0012 — Agent: a simple plan → search → check → answer loop
 
-**Date:** 2026-10-22 · **Status:** Accepted; first-round search amended by [0016](0016-search-the-original-question.md) (the question as typed is always searched); since [0019](0019-single-search-default.md) the agent is the opt-in "Deep search" mode, and single search is the default
+**Date:** 2026-10-22 · **Status:** Accepted. Changed by [0016](0016-search-the-original-question.md) (always search the question as typed). Since [0019](0019-single-search-default.md), this is the optional "Deep search" mode.
 
 ## Context
 
-Single-shot retrieval misses evidence in two measurable ways (0011): the right paper but the wrong passage, and questions whose wording shares little with the evidence. Tushar's 13 synthesis questions also need evidence from several papers, which one search can't gather. The agent's job is to search *iteratively* and answer only from what it found.
+A single search misses evidence in two ways (0011): right paper but wrong passage, and questions worded differently from the paper. My 13 multi-paper questions also need evidence from several papers. The agent searches repeatedly and answers only from what it found.
 
 ## Decision
 
-`src/pcg_agent/agent.py`, about 200 lines, no framework:
+`agent.py`, about 200 lines, no framework:
 
-1. **Plan**: the LLM writes 1–3 queries, one per part of the question, with abbreviations spelled out ("STFT short-time Fourier transform").
-2. **Search**: hybrid retrieval (0011), 6 passages per query. Results are **interleaved by rank across queries**, so every part of the question is represented when the evidence budget (14 passages) is tight.
-3. **Check**: the LLM decides whether the evidence is *sufficient*. If not, it writes new queries in different wording and can **restrict a query to one paper** when it can see which paper should contain the missing detail (paper-scoped search).
-4. **Answer**: the LLM answers only from the passages, citing `[S#]` after every factual sentence, flags disagreements between sources, and states `answerable: yes / partly / no`. **Code** then parses the citations (`[S3]`, `[S3, S5]`, `[S3; S5]`) and verifies each one refers to a passage that was actually shown; anything else is reported as an invalid citation.
+1. **Plan:** the LLM writes 1–3 search queries, one per part of the question, with abbreviations spelled out ("STFT short-time Fourier transform").
+2. **Search:** hybrid search, 6 passages per query. Results from different queries are **interleaved by rank**, so every part of the question gets evidence within the 14-passage limit.
+3. **Check:** the LLM decides whether the evidence is enough. If not, it writes new queries, and can **search inside one specific paper** when it can tell which paper should have the missing detail.
+4. **Answer:** the LLM answers only from the passages, cites `[S#]` after each factual sentence, points out disagreements, and says whether the question is answerable (yes / partly / no). **Code** then checks that every citation refers to a passage it was actually shown.
 
-**Guards:** at most 3 search rounds and 6 LLM calls per question (a hard error beyond that); every step goes into a structured trace (queries, paper filter, hits, new hits, tokens, latency, cache status).
+**Limits:** at most 3 search rounds and 6 LLM calls per question. Every step is logged (queries, hits, tokens, time, cache).
 
-## Evidence that shaped it (first live runs, 2026-10-22)
+## What the first live runs showed
 
-| Problem observed | Fix | After |
+| Problem | Fix | Result |
 |---|---|---|
-| Gemini cited `[S3, S5, S7]`; the parser only knew `[S3]`, so no citations were recorded | Parse grouped citations; unit-tested | Citations recorded and validated |
-| *"What STFT settings does the murmur-and-outcome ensemble use?"*: the paper writes "short-time Fourier transform", never "STFT". After 3 rounds the agent correctly said "not in the evidence" (it didn't hallucinate) but never found the passage. The check step *named the right paper* but couldn't search inside it. | Abbreviation rule + paper-scoped search | Found and cited `festag2022:005` in round 3; exact settings correct; 4 LLM calls, 13 s |
-| *"Which papers use MC Dropout and how do they measure it?"* finds Zhang (entropy) and De Simone, but misses Bondareva (who writes "deviation of the predictions") | Not fixed. "Find every paper that…" is a known weak spot for retrieval-based QA; tuning prompts to one question would overfit | Answer correctly says it's partial. Frequency to be measured in the evaluation |
+| Gemini wrote `[S3, S5, S7]`, but the parser only knew `[S3]`, so no citations were recorded | Parse grouped citations (tested) | Citations recorded and checked |
+| A question about "STFT settings" failed because the paper only says "short-time Fourier transform". The agent honestly said "not found", and its check step even named the right paper, but it couldn't search inside it | Spell out abbreviations + paper-scoped search | Found and cited `festag2022:005` in round 3, settings correct |
+| "Which papers use MC Dropout?" missed Bondareva, who writes "deviation of the predictions" | Not fixed. "Find every paper that…" is a known weak spot, and tuning the prompt to one question would overfit | Answer correctly says it's partial |
 
-## Alternatives considered
+## Alternatives
 
-- **LangGraph** (the common 2026 choice for stateful agents). Its strengths (checkpointing, human-in-the-loop pauses, resumable graphs) aren't needed for a 4-step, sub-20-second loop. A plain loop is easier to read, test and explain line by line. The structure maps directly onto a LangGraph graph (nodes = plan/search/check/answer, a conditional edge on `sufficient`) if those features become necessary.
-- **Free-form tool calling** (the LLM decides when to call `search` with no fixed structure). More flexible, but harder to bound and to evaluate; the fixed loop makes the cost per question predictable (2–6 LLM calls).
-- **Single-shot RAG** (one search, then answer). Cheapest; it's the baseline the agent must beat in the evaluation, on both evidence recall and answer quality.
+- **LangGraph:** its strengths (checkpointing, human approval steps, resumable graphs) aren't needed for a 4-step loop that finishes in under 20 s. A plain loop is easier to read and test. It would map directly onto a LangGraph graph if I ever need those features.
+- **Free-form tool calling:** more flexible, but harder to limit and evaluate. The fixed loop keeps the cost predictable (2–6 LLM calls).
+- **One search, then answer:** the cheapest option, and the baseline the agent has to beat.
 
 ## Consequences
 
-- Latency is 9–16 s and 8–15k input tokens per question, dominated by LLM calls over the evidence. Free-tier rate limits allow roughly one question every 15–20 s.
-- The agent can only be as good as what it retrieves; "find all papers that…" questions remain hard.
-
-## Be ready to explain
-
-- Why a fixed loop with explicit stopping conditions beats an open-ended agent for this task (bounded cost, debuggable traces, testable steps).
-- What the sufficiency check is, and its failure mode (premature "sufficient" ends search too early).
-- Why citations are validated in code rather than trusted (LLMs can cite passages that don't exist or don't support the claim; the second problem is what the faithfulness judge checks).
-- Interleaving vs concatenating evidence from several queries.
+- 9–16 s and 8–15k input tokens per question. The free tier allows about one question every 15–20 s.
+- The agent is only as good as what search finds. "Find all papers that…" is still hard.

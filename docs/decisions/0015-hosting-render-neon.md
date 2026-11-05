@@ -1,108 +1,78 @@
-# 0015 — Hosting: Render (app) + Neon (Postgres), kept awake by an external ping
+# 0015 — Hosting on Render (app) + Neon (database)
 
-**Date:** 2026-10-22 · **Status:** Accepted (supersedes the Hugging Face plan in 0013)
+**Date:** 2026-10-22 · **Status:** Accepted (replaces the Hugging Face plan in 0013)
 
 ## Context
 
-Decision 0013 packaged a single container (Postgres inside) for a free Hugging Face Space. When creating the Space, the API returned **402 Payment Required**: "hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription." Free tiers had changed. The app needs ~280 MB RAM measured (embedding model, BM25 index, FastAPI) plus Postgres with pgvector.
+When I created the Hugging Face Space, it returned **402 Payment Required**: free Docker Spaces now need a PRO subscription. The app needs ~280 MB RAM plus Postgres with pgvector.
 
-Options as of late Sept 2026 (from providers' own pages, collected by snapdeploy.dev):
-
-| Option | Cost | Fit |
+| Option | Cost | Notes |
 |---|---|---|
-| HF Space PRO | $9/month | Easiest (already packaged) |
-| Render free + Neon free | $0, no card | 512 MB, 0.1 CPU, sleeps after 15 min; Neon 1 GB storage, 100 CU-h/month |
-| Azure for Students | $100 credit | More compute, more setup, credit runs out |
-| Heroku via Student Pack | $13/month credit for 24 months | Needs pack verification |
-| Koyeb / Fly.io / Cloud Run / Oracle | | Card or pre-authorisation required |
+| Hugging Face PRO | $9/month | Already packaged |
+| Render free + Neon free | $0, no card | 512 MB, 0.1 CPU, sleeps after 15 min; Neon 1 GB, 100 compute-hours/month |
+| Azure for Students | $100 credit | More setup, credit runs out |
+| Heroku (Student Pack) | $13/month credit | Needs verification |
+| Koyeb / Fly.io / Cloud Run / Oracle | | Card required |
 
-**Tushar chose Render + Neon**, with a timed request to keep Render awake.
+I chose **Render + Neon**, with a timed ping to keep Render awake.
 
 ## Decision
 
-- **App on Render** (free web service, Docker, Singapore region), from `Dockerfile` + `render.yaml` (Blueprint; secrets entered in the dashboard, never in the repo).
-- **Postgres on Neon** (free, Singapore, pgvector). Database outside the container means **uploaded projects persist** across Render restarts and sleeps; they're no longer temporary.
-- **First start against an empty database:** the app creates the schema, then loads the demo project from `deploy/demo_data.sql.gz`, a **data-only** dump (tables are created by the app, so the dump needs no special privileges). Tested against an empty, non-superuser database: the demo loaded in 0.5 s, chunks byte-identical, keyword vectors regenerated.
-- **Keep-alive:** an external cron (cron-job.org) calls **`/api/ping` every 10 minutes**.
-  - `/api/ping` **never touches the database**. Neon suspends after 5 idle minutes and bills compute-hours while awake. A ping hitting the database every 10 minutes would keep it awake most of the month, spending the free 100 CU-hours on nothing.
-  - 10 minutes, not 14.5: cron schedules drift, and 14.5 can slip past Render's 15-minute cutoff.
-  - Budget: 24/7 ≈ 744 of Render's 750 free instance-hours per month, enough for exactly one always-on service per account.
-- **Small-host tuning:** ONNX Runtime limited to 1 thread (`CITEWISE_EMBED_THREADS=1`) on a 0.1-CPU host; one Uvicorn worker (in-memory indexes and rate limits); the Neon **direct** (unpooled) connection string, because psycopg's automatic prepared statements don't survive PgBouncer's transaction pooling.
+- **App on Render** (free, Docker, Singapore), set up from `Dockerfile` + `render.yaml`. Secrets are entered in Render's dashboard, never in the repo.
+- **Database on Neon** (free, Singapore, pgvector). Because the database is outside the container, uploaded projects survive restarts.
+- **First start on an empty database:** the app creates the tables, then loads the demo from `deploy/demo_data.sql.gz` (data only, so it needs no special permissions). Tested: loads in 0.5 s, identical data.
+- **Keep-alive:** cron-job.org calls `/api/ping` every 10 minutes.
+  - `/api/ping` **never touches the database.** Neon sleeps after 5 idle minutes and counts compute hours while awake. Pinging the database every 10 minutes would keep it awake all month and burn the free hours for nothing.
+  - Every 10 minutes, not 14.5, because cron timing drifts and could miss Render's 15-minute cutoff.
+  - Running 24/7 uses ~744 of Render's 750 free hours a month: enough for exactly one always-on service.
+- **Tuned for a tiny host:** 1 ONNX thread, 1 Uvicorn worker, and Neon's **direct** (not pooled) connection string, because psycopg's prepared statements don't work through PgBouncer's pooling.
 
 ## Consequences
 
-- **Uploads are slow** on 0.1 CPU: embedding that took ~0.6 s per chunk on 2 cores will take several seconds per chunk, so minutes per paper. The UI says so. Questions are fine (one short query embedding each).
-- **Render may restart free services at any time;** in-memory rate limits and BM25 caches reset (rebuilt on demand).
-- **The Hugging Face container files were removed;** 0013's guardrails, local tests and UI checks still apply.
-- **Neon cold start** adds ~1 s to the first request after it has slept.
+- **Uploads are slow** on 0.1 CPU: minutes per paper. The page says so. Questions are fine.
+- Render can restart free services anytime, which resets in-memory rate limits and caches.
+- Neon adds ~1 s to the first request after it has slept.
 
-## Be ready to explain
+## Problem: the free daily quota
 
-- Why the keep-alive must not touch the database (two different idle meters: Render's sleep vs Neon's compute-hours).
-- Connection pooling (PgBouncer transaction mode) vs prepared statements.
-- How the app bootstraps an empty database safely and idempotently.
-- That "free" infrastructure changed underneath you mid-project, and how you re-planned (measure memory, compare options, write it down).
+The evaluation stopped at 83 of 116 answers with `429 RESOURCE_EXHAUSTED`: the free tier allows **500 requests/day** for `gemini-3.5-flash-lite`, reset at midnight Pacific.
 
-## Addendum (same day): the free tier's daily quota
+1. **Retrying a daily quota is pointless.** Visitors were waiting ~30 s through retries just to be told "try again in a minute", which wasn't true. Now `llm.py` recognises the daily quota error and the app replies in under a second: "Today's free AI quota is used up. It resets at midnight Pacific time." Per-minute limits still retry.
+2. **My cap was too high.** 300 questions × ~3 LLM calls ≈ 900 calls, more than 500. I lowered it to 120 questions/day. *(Later replaced in [0019](0019-single-search-default.md) by a cap of 400 LLM calls/day.)*
 
-**What happened:** the re-run evaluation stopped at 83 of 116 answers with `429 RESOURCE_EXHAUSTED`, quota id `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, limit **500 requests/day** for `gemini-3.5-flash-lite`, resetting in ~10 h (midnight Pacific).
+The live app and my evaluations share the same key and the same daily quota, so I run evaluations on quiet days.
 
-**Two problems this exposed, both fixed:**
-1. **Retrying a daily quota is pointless.** The retry loop treated every 429 alike, so a visitor waited ~30 s through six retries for "the model is busy, try again in a minute", which was false. Now `llm.py` recognises a per-day quota (a 429 whose quota id contains `PerDay`), raises `DailyQuotaExhausted` immediately, and the app answers **HTTP 429 in under a second**: "Today's free AI quota is used up. It resets at midnight Pacific time." Per-minute 429s still retry. Tests: `tests/test_llm.py` (uses the real quota id).
-2. **The global cap was above what the quota allows.** 300 questions/day × ~3 LLM calls each ≈ 900 calls > 500. Lowered to **120 questions/day** (~360 calls), leaving room for upload metadata calls (one per paper). Override with `CITEWISE_GLOBAL_PER_DAY`. *(Superseded by [0019](0019-single-search-default.md): the cap is now 400 LLM calls/day, `CITEWISE_GLOBAL_CALLS_PER_DAY`; a fast question costs 1 call, a deep one 3.)*
+## Problem: `pdftotext` missing from the image
 
-**Consequence to remember:** the deployed app and the evaluation use the same API key, so they share one daily budget. Run evaluations before sharing the link widely, or on days the demo is quiet.
+While writing the README setup steps, I noticed the Dockerfile didn't install `pdftotext`. Every upload would have failed in production while the pre-loaded demo kept working, which makes it easy to miss. Fixed by installing `poppler-utils`.
 
-**Be ready to explain:** rate limit vs quota; why some errors should *not* be retried (retry budget, user-facing latency, honest error messages); capacity planning from calls-per-request.
+**Lesson:** test every external tool the app uses after deploying, not just the path that pre-loaded data allows.
 
-## Addendum: `pdftotext` was missing from the deploy image
+## Problem: the first upload on Render ran out of memory
 
-While writing the README's local-setup steps, I noticed the new Dockerfile installed only `postgresql-client`. Every upload calls the `pdftotext` binary (decision 0007), so **every upload would have failed in production** while the demo (pre-ingested) worked, which makes it easy to miss. Fixed: the image now installs `poppler-utils`. The image couldn't be built in the development workspace (Docker Hub is outside its network allowlist), so the check is: Render's first build succeeds, then one PDF is uploaded on the live site and reaches "ready".
+The first live upload crashed the instance (over 512 MB). The restart recovery worked: the paper was marked "please upload again". I measured memory while embedding 64 chunks:
 
-**Lesson:** a smoke test of the deployed app must exercise every external binary, not just the happy path that pre-loaded data allows.
-
-## Addendum: the first upload on Render ran out of memory
-
-**What happened:** the first PDF uploaded on the live site crashed the instance ("exceeded its memory limit", 512 MB). The startup recovery worked as designed: the paper was marked "Interrupted by a server restart. Please upload it again."
-
-**Measured locally**, in a process holding the same state as the app (model loaded, demo search index built, 1 ONNX thread), embedding 64 new chunks of one paper:
-
-| Embedding batch size | Peak memory | Speed |
+| Batch size | Peak memory | Speed |
 |---|---|---|
-| 32 (the old default) | **634 MB** | 0.64 s/chunk |
+| 32 (old default) | **634 MB** | 0.64 s/chunk |
 | 8 | 387 MB | 0.60 s/chunk |
 | **4 (chosen)** | **309 MB** | 0.56 s/chunk |
 | 2 | 278 MB | 0.56 s/chunk |
 
-The idle app is ~240 MB, so a batch of 32 passages of up to 350 tokens added ~400 MB of transformer activations, and ONNX Runtime's memory arena keeps the largest allocation it has seen. `pdftotext` itself peaks at under 20 MB, even on the largest corpus PDF (12 MB file).
+The idle app uses ~240 MB, and big batches added ~400 MB that ONNX Runtime keeps holding. Batch size 4 leaves ~200 MB of headroom, and it's actually faster on one thread.
 
-**Fix:** batch size 4. That leaves ~200 MB of headroom, and it's faster per chunk on one thread, because a smaller batch pads less to its longest passage (batching only pays off with several threads).
+**Lesson:** my earlier 280 MB measurement was the idle app. Measure memory on the heaviest path (uploading), not the common one.
 
-**Also learned:** that the crash happened at the embedding step implies `pdftotext` ran, which is indirect evidence the poppler fix above is working. The direct check is still an upload reaching "ready".
+## Hiding health checks from the logs
 
-**Lesson:** the earlier memory measurement (280 MB) was of an idle app answering questions, which isn't the worst case. Measure peak memory on the heaviest path (here, ingestion), not the common one.
+Render calls `/api/ping` every few seconds from its internal network, which buried real requests in the logs. I wanted those hidden but the cron-job.org pings kept, to show the keep-alive works. Render's checks come from a **private** IP (`10.x.x.x`); cron-job.org comes through the proxy with a **public** IP. A log filter (`HideInternalHealthChecks` in `app.py`) drops `/api/ping` lines from private IPs only. Tested in `tests/test_logging.py`. If Render changes how this works, the worst case is the lines come back.
 
-## Addendum: hide Render's health checks from the access log (Tushar's request)
+## Problem: questions failed after the database slept
 
-Render calls `/api/ping` from its internal network every few seconds, which buried every real request in the logs. Tushar wanted those lines gone, but the **cron-job.org keep-alive pings kept**, as visible proof that the keep-alive is working.
+**Symptom:** every question failed with "Something went wrong" until I restarted Render.
 
-**How they're told apart:** Render's health checker connects from a **private** address (the log showed `10.237.x.x`). cron-job.org arrives through Render's proxy, and with `--proxy-headers` Uvicorn logs the forwarded **public** address. A `logging.Filter` on `uvicorn.access` (`HideInternalHealthChecks` in `app.py`) drops `/api/ping` lines from private addresses only; every other path is logged as before. No change was needed on Render or cron-job.org.
+**Cause:** the search code opened one database connection at startup and kept it forever. Neon closes all connections when it sleeps after ~5 idle minutes. Because the ping deliberately doesn't touch the database, the app stayed up while its connection died. The upload worker had the same problem.
 
-**Tested:** unit tests (`tests/test_logging.py`, using an address from the real Render log), and a live Uvicorn run with the production flags. An internal ping was hidden; a ping with `X-Forwarded-For: 195.201.26.157` was logged as `195.201.26.157`; `/api/health` was logged.
+**Fix:** before each question, the app runs `SELECT 1` and reconnects if needed (which also wakes Neon). The upload worker opens a fresh connection per paper. Tested by force-closing the connection; tests in `tests/test_reconnect.py`.
 
-**Caveat:** this relies on Render's health checker using a private address and the proxy forwarding the client's address. If Render changes either, the worst case is that the health-check lines come back. Nothing breaks.
-
-## Addendum: questions failed after the database's idle suspend, until a restart
-
-**Symptom (live, 2026-10-22):** "Something went wrong while answering" on every question, fixed only by restarting the Render service.
-
-**Cause:** the retriever opened one database connection at startup and kept it for the life of the process. Neon suspends its compute after ~5 idle minutes and **closes every open connection**. The keep-alive ping deliberately never touches the database (so Neon *can* suspend), so the app stayed up while its connection died. The next query raised `AdminShutdown`, and every query after that `the connection is closed`. The upload worker had the same long-lived connection. Request handlers were fine: they already open a short-lived connection per request.
-
-**Reproduced locally** by terminating the retriever's backend with `pg_terminate_backend` (what the suspend does): the first question then failed, and so did every later one.
-
-**Fix:**
-- **Retriever:** `Retriever.ensure_connection()` runs `SELECT 1` at the start of every question (`ResearchAgent._project`, the first database use in both modes). If the connection was dropped, it reconnects, which also wakes Neon. Cost: one round trip per question.
-- **Upload worker:** opens a fresh connection per paper.
-- **Tested:** after a forced drop, both fast and deep questions answer normally; unit tests in `tests/test_reconnect.py`.
-
-**Lesson:** a design that lets the database sleep must assume every connection can disappear between requests. Long-lived connections and an auto-suspending database don't mix without a liveness check.
+**Lesson:** if the database is allowed to sleep, any connection can disappear between requests.

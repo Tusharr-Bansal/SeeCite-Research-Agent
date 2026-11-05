@@ -17,3 +17,6 @@ __pycache__/
 
 # LLM response cache (may contain API outputs; regenerated on demand)
 .cache/
+
+# Private study notes (kept local, not on GitHub)
+docs/STUDY_GUIDE.md

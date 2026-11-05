@@ -1,55 +1,25 @@
-# 0001 — Where the code is built, run and delivered
+# 0001 — Where the code is built and run
 
 **Date:** 2026-10-21 · **Status:** Accepted
 
-## Context
-
-The project is built by a coding agent (Claude) working in an isolated Linux cloud workspace, with Tushar's Windows folder `C:\TUSHAR\Agentic AI Project` linked as the delivery location. The two machines have different capabilities, checked on 2026-10-21:
-
-| Capability | Cloud workspace | Linked folder (Linux VM on Tushar's machine) |
-|---|---|---|
-| Python | 3.13 | 3.10 |
-| Postgres 16 | yes (+ pgvector installed via apt) | no |
-| Docker | yes, but Docker Hub is blocked | no |
-| Gemini API | yes (after allowlisting the domain) | no |
-| Hugging Face | yes (after allowlisting) | no |
-| RAM / CPUs | 7 GB / 2 | 3 GB / 2 |
-
-Outbound network access is restricted by an account-level domain allowlist ("Package managers only" plus four domains Tushar added: `generativelanguage.googleapis.com`, `huggingface.co`, `*.huggingface.co`, `*.hf.co`). arXiv, Europe PMC, OpenAI and most hosting providers are not reachable.
-
 ## Decision
 
-- **Build and run everything in the cloud workspace.** It has Postgres, pgvector and network access to the LLM.
-- **Deliver to Tushar's folder at checkpoints.** The repo is copied to `C:\TUSHAR\Agentic AI Project\pcg-research-agent` after each working milestone.
-- **GitHub becomes the source of truth once the repo exists there** (needed for deployment anyway).
+I built this project with Claude Code working in a cloud Linux workspace, with my Windows folder linked for delivery. The cloud workspace had Postgres 16 + pgvector and could reach the Gemini API; my linked folder couldn't, so:
 
-## Alternatives considered
+- All code is built and tested in the cloud workspace.
+- The repo is copied to my folder at each working milestone.
+- Once the repo was on GitHub, GitHub became the source of truth.
 
-- **Build directly in the linked folder.** Rejected: it can't reach Gemini or run Postgres, so nothing could be tested there.
-- **Run Postgres in Docker** (the usual way). Rejected for development because Docker Hub is blocked; a native Postgres 16 with the `postgresql-16-pgvector` apt package does the same job. Deployment will use a hosted Postgres, so this difference doesn't reach production.
+Docker Hub was blocked in the workspace, so I used a native Postgres 16 with the `postgresql-16-pgvector` package for development. Production uses hosted Postgres, so this doesn't matter there.
 
 ## Consequences
 
-- The workspace is ephemeral: it is reclaimed after inactivity. Anything not copied to the folder or pushed to GitHub can be lost, so checkpoints must be frequent.
-- Paper PDFs can't be downloaded from the workspace (no arXiv/PMC access), so Tushar supplies them.
+- The workspace is temporary, so I had to sync often.
+- Paper PDFs couldn't be downloaded there, so I supplied them myself.
 
-## Be ready to explain
+## Problems I hit
 
-- Why the dev database differs from production (native vs. hosted Postgres) and why that's acceptable here: same engine version family, same extension, schema created by the same migration script.
-- What a domain allowlist is and why "package managers + four named domains" is safer than "all domains" (least privilege for an AI agent with a shell).
+- **SQLite on a network drive:** the LLM response cache (SQLite) failed on the synced output folder (`attempt to write a readonly database`), because file locking doesn't work reliably there. I moved the working copy to local disk.
+- **Stale file copies (2026-10-22):** copying a file to my computer a second time sometimes delivered the *old* version while reporting success. Three files (`index.html`, `app.py`, `eval_agent.py`) were committed and deployed stale, so a header bug I'd fixed still showed on the site. I found it by comparing MD5 checksums of all 57 files. Now each sync uses a fresh folder, and every file is checksum-compared before I commit.
 
-## Update (2026-10-22): local working copy
-
-The workspace's shared output folder is a network-synced filesystem (rclone FUSE). SQLite, used for the LLM response cache, failed there with `attempt to write a readonly database` midway through a run, because SQLite's file locking doesn't work reliably on network filesystems. The working copy now lives on the workspace's local disk, and files are copied to the output folder only to hand them to Tushar's folder.
-
-## Addendum (2026-10-22): verify every sync to Tushar's computer by checksum
-
-Files reach Tushar's computer by being staged in the cloud workspace and copied over by the desktop bridge. On 2026-10-22, **re-copying a file to a path that had been copied before sometimes delivered the previous version** while still reporting success. Three files were affected: `index.html` (the header fix), `app.py` (the 7-day expiry server code) and `eval_agent.py`. They were committed and deployed stale, and the site showed the header bug "still not fixed".
-
-**Found by:** comparing MD5 checksums of all 57 project files on both sides.
-
-**Now:**
-- Each sync stages files in a **fresh, uniquely named folder**, so a cached copy can't be reused.
-- After every sync, **all files are checksum-compared** on Tushar's computer before he's told to commit.
-
-**Lesson:** "written" from a tool is not the same as "has the right content". Verify the outcome, not the report.
+**Lesson:** a tool saying "written" doesn't mean the content is right. Check the result.

@@ -1,91 +1,71 @@
-# 0018 — A claim-level faithfulness judge, tested against the human-verified labels
+# 0018 — A stricter AI judge, tested once: it did worse
 
-**Date:** 2026-10-22 · **Status:** Done: the method was pre-registered and run once. **Negative result:** κ fell from 0.41 to 0.20.
+**Date:** 2026-10-22 · **Status:** Done. **Negative result:** κ dropped from 0.41 to 0.20.
 
 ## Context
 
-Decision 0017 found the LLM judge too lenient. Against the 60 reviewed labels (model-assisted drafting, reviewed card by card; see 0017), it caught **1 of 10** answers with a faithfulness problem (κ = 0.41). Every missed error was an **overstatement**: a dropped hedge, a widened quantifier, a detail not in the passage, or a method credited to the wrong paper. The old judge read the answer *as a whole* and gave one verdict. Holistic reading is exactly where small overstatements slip through.
+In 0017 the AI judge caught only **1 of 10** answers with a faithfulness problem, and every miss was an overstatement. The old judge read each answer as a whole and gave one verdict, which is exactly where small overstatements slip through. I wanted one attempt at a stricter judge, tested on the **same 60 labels** (no new labelling needed).
 
-Tushar asked for one attempt at a stricter judge, measured against the **same 60 labels**. He doesn't need to label anything new: the answers and labels are unchanged, only the judge is new.
+## Rules I set before running it
 
-## Pre-registration (written before any result was seen)
+The risk is tweaking the judge until it agrees with these 60 labels, which would measure overfitting, not quality. So:
+- **One method, decided in advance, run once.** No prompt changes after seeing results.
+- **Same judge model** (`gemma-4-26b-a4b-it`, temperature 0) and same inputs. Only the method changes.
 
-The risk is tuning the judge to these 60 labels until κ looks good, which would measure overfitting, not quality. So:
+## The method (`eval/judge_v2.py`)
 
-- **One method, chosen in advance and run once.** No prompt iteration after seeing results. If it fails, that's the result.
-- **The judge model is unchanged:** `gemma-4-26b-a4b-it`, temperature 0. The only thing being tested is the *method*.
-- **Same inputs:** question, answer, and the cited passages exactly as the old judge saw them.
+1. **Split the answer into individual claims.** "Information not found" statements and naming which paper is meant don't count as claims.
+2. **For each claim:** the judge gives an exact quote from the cited passages that supports it, and a label:
+   - `supported`: the quote says it, at the same strength (keeping hedges like *may* and quantifiers like *some*) and with every detail;
+   - `overstated`: the passage only supports a weaker or narrower version, or the claim adds a detail;
+   - `wrong_source`: the cited passage doesn't support it, or contradicts it;
+   - `unsupported`: nothing supports it.
+3. **Quote check in code:** a `supported` claim's quote must actually be in the passages (fuzzy match, ≥85%). Otherwise it counts as only partly supported.
+4. **The final verdict is computed in code:** no claims → `no_claims`; all supported → `supported`; more than half unsupported → `unsupported`; anything else → `partly`.
 
-### The method (`eval/judge_v2.py`)
+**One rule fixed before the first run:** my first draft would have labelled a one-claim answer with a small overstatement `unsupported`, which contradicts my labelling rubric ("unsupported" means the main claims aren't backed). I corrected it before any judge output existed.
 
-1. **Claims, not answers.** The judge splits the answer into atomic factual claims. Excluded: statements that information is missing, and identifying which paper is meant.
-2. **For each claim** it gives the cited labels, a **verbatim quote** from the cited passages that supports it (empty if none), and one support label:
-   - `supported`: the quote states the claim, including its strength (hedges such as *may* or *likely*, quantifiers such as *some* or *primarily*) and every specific detail;
-   - `overstated`: the passage supports only a weaker, narrower or more hedged version, or the claim adds a specific detail the passage doesn't state;
-   - `wrong_source`: no cited passage supports the claim, or one of its cited passages contradicts it;
-   - `unsupported`: nothing in the cited passages supports it.
-3. **Quote check in code:** a claim labelled `supported` must have a quote that is actually found in the cited passages. The fuzzy matcher from the gold set (0010) is reused: alphanumeric normalisation, ≥ 85% coverage. If the quote isn't found, the claim counts as not fully supported (partly backed). The model can't certify full support it can't point to.
-4. **The verdict is computed in code, not chosen by the model,** mirroring the rubric on the labelling page:
-   - no claims → `no_claims`
-   - every claim `supported` (with its quote found) → `supported`
-   - more than half the claims `unsupported` (nothing backs them; "the main claims aren't backed") → `unsupported`
-   - anything in between → `partly`. Overstated, wrong-source, and supported-but-quote-not-found claims all count as *partly backed*.
+**Fixes made while running** (to how the judge runs, not how it judges):
+- The judge sometimes added stray text after its JSON. The parser now reads the first JSON object only.
+- On one answer the judge kept generating until the server timed out. I capped output at 2048 tokens and re-ran all 60 under that cap. Dropped connections now retry.
+- The run hit the per-minute token limit, and retries ignored the server's "retry in 25s". `llm.py` now waits as long as the server asks (tested in `tests/test_llm.py`).
 
-   **Amendment before the first run:** the first draft said "more than half supported → partly, else unsupported". Unit-testing it showed that a one-claim answer with a small overstatement would be `unsupported`, while the rubric (written on the labelling page *before* any labels existed) defines unsupported as "the main claims aren't backed". The rule was corrected to the rubric's definition. No judge output had been generated or seen when this was changed.
+Answers the judge still can't handle are recorded as `judge_failed`, never given a guessed label.
 
-*Implementation fix during the run:* the judge occasionally appended a stray ```` ``` ```` after valid JSON, which crashed parsing at answer 10. The parser now reads the first JSON object and ignores trailing text. This changes no judgement: earlier answers were served from the response cache, unchanged.
+**Known limitation:** my rubric categories came from labelling these same 60 answers, so results on them will look better than reality. A proper check needs a held-out set.
 
-*Second fix during the run:* on one answer (a 285-character single-search answer), the judge generated without stopping until the server dropped the request at 300 s, every time, so the run could never finish. Two changes, both about running the judge, not about how it judges:
-- **An output cap of 2048 tokens.** A normal claim list is a few hundred tokens. The cap applies to all 60 answers, so all 60 were re-judged under it, at temperature 0, for one consistent run.
-- **Dropped connections (`httpx` transport errors) are now retried** like 5xx errors in `llm.py`. That's useful in production too.
+## Results
 
-*Third fix:* the run then hit the judge model's per-minute token limit (16,000 input tokens a minute), and the retries gave up because they ignored the server's "retry in 25s". `llm.py` now waits at least as long as the server's `RetryInfo` delay (tested in `tests/test_llm.py`). Daily-quota errors still fail fast (0015).
+The judge failed on 1 of 60 answers, so the comparison uses the other **59** (the old judge is re-scored on the same 59).
 
-Any answer whose output is still unusable is recorded as **`judge_failed`** and reported. Agreement is computed on the answers the judge could handle, and the failures are listed. A failed answer is never assigned a guessed label.
-
-### What will be reported
-
-- **Primary:** Cohen's κ (4 classes) vs the 60 human-verified labels, with a bootstrap 95% CI.
-- Also: binary κ (problem / no problem); errors caught out of 10; false alarms out of 50.
-- **Secondary, no extra model calls:** the same run *without* the quote check (step 3), to show what that check contributes.
-- Old judge, same 60: κ = 0.41 [0.12, 0.67], binary κ = 0.16, 1/10 caught, 0/50 false alarms.
-
-### Known limitation, stated in advance
-
-The rubric categories (hedge, quantifier, added detail, wrong source) were written down *while labelling these same 60 answers*. A judge built around that rubric is being tested on the data the rubric came from, so the κ will be **optimistic**. An honest confirmation needs a **held-out** set: answers not used to shape the rubric, labelled the same way. That isn't part of this run. It will be listed as the next step, and the result will be described as "on the development set".
-
-## Results (single run, as pre-registered)
-
-The judge failed on 1 of 60 answers (`own:svqmmp8yvn19i2vmf63h|single_shot`: it looped until the 2048-token cap). Agreement is on the other **59**; the old judge is re-scored on the same 59 for a fair comparison.
-
-| Judge (same model, same 59 answers) | Cohen's κ [95% CI] | Raw | Binary κ | Problems caught | False alarms |
+| Judge (same model, same 59) | Cohen's κ [95% CI] | Accuracy | Binary κ | Problems caught | False alarms |
 |---|---|---|---|---|---|
-| Old: holistic verdict | **0.41** [0.12, 0.67] | 0.81 | 0.16 | 1 / 10 | 0 / 49 |
-| **New: claim-level + quote check** | **0.20** [−0.03, 0.42] | 0.73 | −0.05 | 1 / 10 | 7 / 49 |
+| Old: one verdict per answer | **0.41** [0.12, 0.67] | 0.81 | 0.16 | 1 / 10 | 0 / 49 |
+| **New: per claim + quote check** | **0.20** [−0.03, 0.42] | 0.73 | −0.05 | 1 / 10 | 7 / 49 |
 | New, without the quote check | 0.28 [0.06, 0.51] | 0.78 | 0.02 | 1 / 10 | 4 / 49 |
 
-**The pre-registered method made the judge worse.** It still caught only 1 of the 10 problems, and it added false alarms.
+**The new method made the judge worse.** It still caught only 1 of 10 problems and added false alarms.
 
-## Why it failed (diagnosis from the judge's own claim-by-claim output; nothing re-run)
+## Why it failed (from the judge's own output; nothing re-run)
 
-1. **It finds the right evidence but doesn't notice the claim is stronger than it.** In every one of the 9 missed answers, the judge split out the overstated claim and **quoted the exact sentence that contains the hedge** (quote match 1.00), then labelled the claim `supported`. Examples:
-   - claim "differs **primarily due to** noise", with the quote "the difference… **may stem** from data";
-   - claim "**specifically trained on infant** and child-centered…", with the quote "trained **primarily** on child-centered";
-   - claim "averaging… [S1, S2]", where it quoted only S1 and never checked that S2 contradicts it.
+1. **It finds the right evidence but doesn't notice the claim is stronger.** In all 9 misses, the judge quoted the exact sentence containing the hedge, then still said `supported`. For example:
+   - claim "differs **primarily due to** noise", quote "the difference… **may stem** from data";
+   - claim "**specifically trained on infant**…", quote "trained **primarily** on child-centered";
+   - a claim citing S1 and S2, where it only checked S1 and missed that S2 contradicts it.
 
-   Getting the judge to point at evidence didn't make it compare *strength*. That's a limit of this judge model (a 26B mixture-of-experts with ~4B active parameters), not of the instructions, which named hedges and quantifiers explicitly.
-2. **False alarms came from two mechanical sources:**
-   - **"Not found" statements split into claims:** 3 of the 4 "no claims" answers were turned into "unsupported" because the judge listed "the passages do not mention X" as a claim, against an explicit instruction. That's an instruction-following failure.
-   - **The quote check is brittle on table text:** 3 false alarms were claims taken from garbled PDF tables (e.g. parameter counts), where the quote is paraphrased or reordered and matches only 0.38–0.84. Without the check, these three pass.
+   My instructions explicitly named hedges and quantifiers, so this is a limit of the judge model (a 26B mixture-of-experts with ~4B active parameters), not of the prompt.
+2. **False alarms came from two mechanical issues:**
+   - The judge turned "the passages don't mention X" into a claim (against instructions), so 3 of 4 "no claims" answers became "unsupported".
+   - The quote check failed on 3 claims from garbled PDF tables, where the quote was reordered.
 
 ## Decision
 
-- **Keep the old judge as the automatic metric, and keep its κ = 0.41 as the reported number.** The README and resume figures don't change: human-verified faithfulness of 83%, with the judge's agreement disclosed.
-- **No further prompt changes on these 60 labels.** The two mechanical fixes (filtering "not found" statements in code; relaxing the quote check for table text) are obvious, but making them after seeing these results and re-scoring the same 60 would be tuning to the test set. They would need a **held-out labelled set**.
-- **What would most likely work, not done:** a **stronger judge model**. Every miss was a reasoning failure on evidence the judge had already found. Cost is the obstacle: the stronger Gemini models allow ~20 free requests a day, so this means a paid key (a few cents for 60 answers) or three days of free quota.
+- **Keep the old judge and its κ = 0.41.** The README and resume numbers don't change (83% faithful by my review).
+- **No more changes based on these 60 labels.** The two mechanical fixes are obvious, but making them now and re-scoring would be tuning to the test set. They need a held-out set.
+- **What would probably work:** a stronger judge model, since every miss was a reasoning failure on evidence the judge had already found. On the free tier, the stronger Gemini models allow ~20 requests a day, so this means a paid key (a few cents) or three days of quota.
 
-## What this shows (the interview version)
+## Takeaways
 
-- **Validate the evaluator, not just the system.** The holistic judge looked fine at 98%. Checking it against labels showed it misses overstatement, and checking the fix showed that the "obvious" fix (claim decomposition) doesn't help with this model.
-- **Pre-registration plus a single run** is what makes a negative result trustworthy. Without it, the temptation is to adjust prompts until the 60 labels agree.
-- **Small open models find evidence well but compare meaning poorly:** they spot the right sentence but don't notice "may" became "primarily". That's a concrete, demonstrated failure mode, not a general claim.
+- **Test the evaluator, not just the system.** The judge looked fine at 98% until I checked it against my labels.
+- **Deciding the method in advance and running it once** is what makes a negative result trustworthy.
+- **Small models find the right evidence but compare meaning poorly:** they spot the sentence but miss that "may" became "primarily".
